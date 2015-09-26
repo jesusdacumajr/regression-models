@@ -1,0 +1,94 @@
+---
+title: "Modeling MPG with Regression"
+author: "Jesus Dacuma"
+---
+
+### Executive Summary
+
+This report used the `mtcars` dataset from the 1974 Motor Trend US magazine to answer:
+
+* Is an automatic or manual transmission better for MPG?
+* What is the quantifiable difference in MPG between automatic and manual transmissions?
+
+Effects of transmission were determined using linear regression models dynamically selected by analyzing residuals and variance inflation factors. Results show that a manual transmission causes an 2.9358 MPG increase in fuel efficiency when all other factors are equal. While transmission type can significantly affect MPG, the report concludes that other aspects of automobile design such as weight and quarter-mile time can more significantly explain changes in MPG. 
+
+#### Exploratory Analysis
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(datasets); library(car)
+
+mtcars$am <- factor(mtcars$am); levels(mtcars$am) <- c("Automatic", "Manual") # Transmission Type Factor
+mtcars$vs <- factor(mtcars$vs); levels(mtcars$vs) <- c("V", "Straight")
+mtcars$cyl <- factor(mtcars$cyl); mtcars$gear <- factor(mtcars$gear); mtcars$carb <- factor(mtcars$carb)
+```
+
+Figure 1 is a scatterplot of the `mtcars` dataset showing how two types of transmission may affect MPG. A fitted regression line shows that there is a lot of variance in MPG, even within each transmission style. Explaining this variance requires exploration of other variables in the dataset.
+
+#### Model Selection
+
+The model selection process used in this report begins with a linear model including all variables. The model is examined using `vif` and the non-significant regressor with the highest variance-inflation is eliminated. This process is repeated, eliminating another regressor with each iteration until the final resulting model only contains variables significant to the 95% confidence level. The goal of this strategy is to minimize variance by only including uncorrelated, orthogonal variables and removing variables without significant effects on MPG.
+
+Using variance-inflation analysis, one can easily eliminate four variables (`carb`, `cyl`, `gear`, `disp`) that contribute to obscenely high variance. The result is the first model that this report will explore.
+
+```{r}
+fit1 <- lm(mpg ~ . - carb - cyl - gear - disp, data = mtcars) # Model 1
+vif(fit1)
+```
+
+Continuing to eliminate factors through the model selection process, one will arrive at the final model, which only includes three significant regressors (`wt`, `qsec` and `am`) and has low variance-inflation. 
+
+```{r}
+fit2 <- lm(mpg ~ am + wt + qsec, data = mtcars) # Model 2
+vif(fit2)
+```
+
+Figure 2 shows residual plots of the two models. Neither plot exhibits any obvious pattern that would suggest other confounders have been omitted. However, one can determine that the second model is a better model - not only because it introduces less variation, but its predicted residual sum of squares (PRESS) statistic is lower when cross-validating the points in the dataset.
+
+```{r, echo=FALSE}
+dfPRESS <- data.frame(Model_1 = sum((resid(fit1) / (1-hatvalues(fit1)))^2), Model_2 = sum((resid(fit2) / (1-hatvalues(fit2)))^2), row.names = "PRESS Values")
+dfPRESS
+```
+
+Lastly, the Q-Q plot of Model 2 in Figure 3 shows that the residuals are somewhat linear with theoretical quantiles, confirming the original assumptions of normality.
+
+#### Understanding the Model
+Below are the coefficients and R^2 value of the chosen model (Model #2). For reference, the R^2 value for a regression model including every variable is 0.89, only slightly higher than the R^2 value of the chosen model. The regression model coefficient for `am` estimates an increase of 2.9358 MPG for a manual transmission over an automatic transmission, when all other factors (weight and quarter-mile time) are held constant. With 95% confidence, that increase in gas mileage will range between 0.05 to 5.83 MPG. Thus, a manual transmission is better for MPG.
+
+```{r, echo=FALSE}
+summary(fit2)$coef
+cat('R-Squared: ', summary(fit2)$r.squared)
+cat('Manual Transmission Confidence Interval: ', summary(fit2)$coef['amManual','Estimate'] + c(-1,1) * qt(.975, df = fit2$df) * summary(fit2)$coef['amManual','Std. Error'])
+```
+
+While transmission type is a significant regressor of MPG, the p-values show that weight and quarter-mile time are even stronger predictors of MPG (significant to the 99.9% confidence level as opposed to 95%). Using general intuition and subject knowledge, the inclusion of weight and quarter-mile time make sense; a heavier automobile will require more gasoline to run the same distance, and higher-performance cars with lower quarter-mile times were designed for speed and not fuel efficiency.
+
+#### Conclusion
+
+Using a regression model that only includes significant variables and minimizes variance-inflation, one can predict MPG based on automobile transmission type, weight and quarter-mile time (the same variables chosen by R.R. Hocking in his 1976 analysis of the Motor Trend dataset). The model suggests that a manual transmission is better for gas mileage, increasing MPG by an expected 2.9358 miles per gallon over an automatic transmission (with weight and quarter-mile time held constant).
+
+### Appendix
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(grid)
+library(gridExtra)
+```
+
+```{r, echo=FALSE}
+ggplot(mtcars, aes(x=am, y=mpg, color=am, group=1)) +
+  geom_point(size = 5) + 
+  scale_colour_hue(l=50) + 
+  geom_smooth(method=lm, size=1) +
+  labs(title="Fig. 1: Scatterplot of MPG", x="Transmission Type", y="Miles per Gallon")
+```
+
+
+```{r, echo=FALSE}
+p2a <- ggplot(mtcars, aes(x=predict(fit1),y=resid(fit1))) + geom_point(size = 5) + geom_hline(yintercept=0) + geom_smooth(method=lm) + labs(title="Model 1", x="Fitted Values", y="Residuals")
+
+p2b <- ggplot(mtcars, aes(x=predict(fit2),y=resid(fit2))) + geom_point(size = 5) + geom_hline(yintercept=0) + geom_smooth(method=lm) + labs(title="Model 2", x="Fitted Values", y="Residuals")
+
+grid.arrange(p2a, p2b, ncol = 2, nrow = 1, top = textGrob("Fig. 2: Residuals vs. Fitted",gp=gpar(fontsize=15)))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+qqPlot(fit2, ylab="Standardized Residuals", xlab="Theoretical Quantiles", main="Fig. 3: Normal Q-Q Plot of Model 2")
+```
